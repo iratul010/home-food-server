@@ -5,3 +5,6 @@
 - service data get all
 - review data set
 - server site data push on database(mongodb)
+
+* jwt create
+* ignoring some data
