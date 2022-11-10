@@ -1,5 +1,6 @@
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const express = require("express");
+const jwt = require("jsonwebtoken");
 const cors = require("cors");
 require("dotenv").config();
 //this is position is right ⬇ for app
@@ -13,10 +14,32 @@ app.use(express.json());
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASSWORD}@cluster0.2xlnexh.mongodb.net/?retryWrites=true&w=majority`;
 
 const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true, serverApi: ServerApiVersion.v1 });
+function verifyJWT(req, res, next) {
+  const authHeader = req.headers.authorization;
+  console.log(authHeader);
+  if (!authHeader) {
+    res.status(401).send({ message: "unauthorized access" });
+  }
+  const token = authHeader.split(" ")[1];
+  jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, function (err, decoded) {
+    if (err) {
+      res.status(401).send({ message: "unauthorized access" });
+    }
+    req.decoded = decoded;
+    next();
+  });
+}
 async function run() {
   try {
     const serviceCollection = client.db("homeFood").collection("services");
     const reviewCollection = client.db("homeFood").collection("reviews");
+
+    app.post("/jwt", (req, res) => {
+      const user = req.body;
+      console.log(user);
+      const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: "222d" });
+      res.send({ token });
+    });
     app.get("/services", async (req, res) => {
       const query = {};
       const cursor = serviceCollection.find(query);
@@ -33,7 +56,14 @@ async function run() {
       res.send(service);
     });
     //reviews api
-    app.get("/reviews", async (req, res) => {
+    app.get("/reviews", verifyJWT, async (req, res) => {
+      //again check
+      const decoded = req.decoded;
+      //self data get
+      if (decoded.email !== req.decoded.email) {
+        res.status(403).send({ message: "unauthorized access" });
+      }
+      console.log(decoded);
       let query = {};
       //filtering query
       if (req.query.email) {
@@ -45,13 +75,12 @@ async function run() {
       const reviews = await cursor.toArray();
       res.send(reviews);
     });
-    app.post("/reviews", async (req, res) => {
+    app.post("/reviews", verifyJWT, async (req, res) => {
       const review = req.body;
-
       const result = await reviewCollection.insertOne(review);
       res.send(result);
     });
-    app.delete("/reviews/:id", async (req, res) => {
+    app.delete("/reviews/:id", verifyJWT, async (req, res) => {
       const id = req.params.id;
       const query = { _id: ObjectId(id) };
       const result = await reviewCollection.deleteOne(query);
